@@ -1,0 +1,70 @@
+# Minimal in-cluster Prometheus (ConfigMap + Deployment + Service).
+# For production prefer kube-prometheus-stack; this is a lightweight template.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+    scrape_configs:
+      - job_name: dcgm
+        static_configs:
+          - targets: ["dcgm-exporter:9400"]
+      - job_name: triton
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["triton:8002"]
+      - job_name: vllm
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["vllm:8000"]
+      - job_name: tgi
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["tgi:8080"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest # pin me
+          args: ["--config.file=/etc/prometheus/prometheus.yml"]
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090

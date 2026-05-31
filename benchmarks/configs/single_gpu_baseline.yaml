@@ -1,0 +1,24 @@
+# Baseline single-GPU experiment (Professional Portfolio tier).
+#
+# Run against a real server by setting backend.type / base_url, or do a no-GPU
+# smoke test with the mock backend:
+#   python -m benchmarks.runner.client --config <this> --backend mock --max-seconds 10
+name: single_gpu_baseline
+hardware: A100-80GB
+precision: fp16
+backend:
+  type: vllm
+  base_url: http://localhost:8000
+  model: meta-llama/Meta-Llama-3-8B-Instruct
+  api_style: openai-chat
+workload:
+  prompt_tokens: 512
+  output_tokens: 256
+  temperature: 0.0
+  top_p: 1.0
+load:
+  concurrency: 16
+  duration_s: 30
+  warmup_requests: 4
+  request_timeout_s: 120
+notes: "Baseline: vLLM FP16, 16 concurrent, 512 -> 256 tokens."

@@ -1,0 +1,60 @@
+# Hugging Face TGI deployment for a GPU node pool. Template only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tgi
+  labels:
+    app: tgi
+    suite: trt-triton-llm-bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tgi
+  template:
+    metadata:
+      labels:
+        app: tgi
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: tgi
+          image: ghcr.io/huggingface/text-generation-inference:latest # pin me
+          args: ["--model-id", "meta-llama/Meta-Llama-3-8B-Instruct"]
+          ports:
+            - containerPort: 80
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+                  optional: true
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tgi
+  labels:
+    app: tgi
+spec:
+  selector:
+    app: tgi
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 80

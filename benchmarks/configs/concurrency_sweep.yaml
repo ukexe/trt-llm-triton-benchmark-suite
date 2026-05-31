@@ -1,0 +1,19 @@
+# Concurrency sweep: how TTFT / TPS / p95 latency scale with in-flight requests.
+# Expands into one experiment per concurrency level via the Cartesian sweep.
+name: concurrency_sweep
+base:
+  hardware: A100-80GB
+  precision: fp16
+  backend:
+    type: vllm
+    base_url: http://localhost:8000
+    model: meta-llama/Meta-Llama-3-8B-Instruct
+    api_style: openai-chat
+  workload:
+    prompt_tokens: 512
+    output_tokens: 256
+  load:
+    duration_s: 30
+    warmup_requests: 4
+sweep:
+  load.concurrency: [1, 4, 16, 64]

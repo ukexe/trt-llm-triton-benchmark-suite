@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trt-triton-llm-bench"
+version = "0.1.0"
+description = "Multi-backend LLM inference benchmark & cost-optimization suite (TensorRT-LLM/Triton, vLLM, LMDeploy, TGI)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "trt-triton-llm-bench maintainers" }]
+keywords = ["llm", "inference", "benchmark", "tensorrt-llm", "triton", "vllm", "tgi", "lmdeploy"]
+
+# Runtime dependencies for the benchmark harness + cost model.
+dependencies = [
+    "httpx>=0.27",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Tooling for local development and CI.
+dev = [
+    "ruff>=0.5",
+    "pytest>=8.0",
+]
+# Heavier libs used only by notebooks/analysis and plotting.
+analysis = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "matplotlib>=3.8",
+    "jupyter>=1.0",
+]
+
+[project.scripts]
+llm-bench = "benchmarks.runner.client:main"
+llm-cost = "cost.cost_analysis:main"
+
+[tool.setuptools.packages.find]
+include = ["benchmarks*", "cost*"]
+exclude = ["tests*", "notebooks*", "infra*", "models*", "docs*", "scripts*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+# pycodestyle (E/W), pyflakes (F), isort (I), pyupgrade (UP), bugbear (B), comprehensions (C4).
+select = ["E", "W", "F", "I", "UP", "B", "C4"]
+ignore = [
+    "E501",  # line length is enforced by the formatter, not the linter
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,37 @@
+# GPU price snapshots (USD per GPU-hour). EXAMPLES -- update with current pricing.
+#
+# Anchored on the blueprint's references (Spheron 2026 H100 ~$1.03/hr, AWS H100
+# on-demand ~$6.88/hr, Azure ND H100 v5 ~$12.29/hr, plus RunPod / Lambda / Vast.ai
+# marketplace comparisons). Marketplace/spot prices fluctuate constantly; refresh
+# from live pricing pages before quoting numbers.
+#
+# Schema: a flat list under `pricing`, each entry having:
+#   provider, gpu_type, on_demand_price_per_hour, notes
+# gpu_type matching is case-insensitive and treats '-' and '_' as equivalent
+# (so "A100-80GB" and "A100_80GB" resolve to the same entries).
+currency: USD
+updated: "2026-05"
+
+pricing:
+  - { gpu_type: A100_80GB, provider: runpod, on_demand_price_per_hour: 1.19, notes: "Secure Cloud on-demand" }
+  - { gpu_type: A100_80GB, provider: lambda, on_demand_price_per_hour: 1.29, notes: "On-demand" }
+  - { gpu_type: A100_80GB, provider: vast,   on_demand_price_per_hour: 0.80, notes: "Marketplace; varies by host" }
+  - { gpu_type: A100_80GB, provider: aws,    on_demand_price_per_hour: 3.67, notes: "p4d per-GPU approx (on-demand)" }
+
+  - { gpu_type: H100_80GB, provider: spheron, on_demand_price_per_hour: 1.03, notes: "Marketplace low-end" }
+  - { gpu_type: H100_80GB, provider: runpod,  on_demand_price_per_hour: 2.49, notes: "Secure Cloud on-demand" }
+  - { gpu_type: H100_80GB, provider: lambda,  on_demand_price_per_hour: 2.99, notes: "On-demand" }
+  - { gpu_type: H100_80GB, provider: vast,    on_demand_price_per_hour: 1.87, notes: "Marketplace; varies by host" }
+  - { gpu_type: H100_80GB, provider: aws,     on_demand_price_per_hour: 6.88, notes: "p5 per-GPU approx (on-demand)" }
+  - { gpu_type: H100_80GB, provider: azure,   on_demand_price_per_hour: 12.29, notes: "ND H100 v5 per-GPU approx" }
+
+  - { gpu_type: L40S_48GB, provider: runpod, on_demand_price_per_hour: 0.99, notes: "Secure Cloud on-demand" }
+  - { gpu_type: L40S_48GB, provider: vast,   on_demand_price_per_hour: 0.79, notes: "Marketplace; varies by host" }
+  - { gpu_type: L40S_48GB, provider: lambda, on_demand_price_per_hour: 1.10, notes: "On-demand" }
+
+# Reference serverless pricing (USD per 1M tokens) for an apples-to-oranges
+# sanity check against your self-hosted cost-per-million-tokens estimates.
+serverless_per_mtok:
+  llama-3-8b:
+    together_input: 0.18
+    together_output: 0.18

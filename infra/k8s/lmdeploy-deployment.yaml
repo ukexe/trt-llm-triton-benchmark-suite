@@ -1,0 +1,61 @@
+# LMDeploy / TurboMind deployment for a GPU node pool. Template only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lmdeploy
+  labels:
+    app: lmdeploy
+    suite: trt-triton-llm-bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lmdeploy
+  template:
+    metadata:
+      labels:
+        app: lmdeploy
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: lmdeploy
+          image: openmmlab/lmdeploy:latest # pin me
+          command: ["lmdeploy", "serve", "api_server"]
+          args: ["meta-llama/Meta-Llama-3-8B-Instruct", "--server-port", "23333"]
+          ports:
+            - containerPort: 23333
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+                  optional: true
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /root/.cache/huggingface
+      volumes:
+        - name: hf-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lmdeploy
+  labels:
+    app: lmdeploy
+spec:
+  selector:
+    app: lmdeploy
+  ports:
+    - name: http
+      port: 23333
+      targetPort: 23333

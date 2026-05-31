@@ -1,0 +1,39 @@
+# Precision / quantization sweep (Phase 6) mapping each precision to the backend
+# + model id that actually serves it, per the blueprint's Quantization
+# Recommendations and Experiment Matrix.
+#
+# Uses the `experiments:` list so each variant can point at a different endpoint
+# / model. `defaults` are deep-merged under every experiment.
+#
+# No-GPU smoke (runs all four against the simulator):
+#   python -m benchmarks.runner.client --config benchmarks/configs/multi_precision_sweep.yaml \
+#       --backend mock --num-requests 8
+name: precision_sweep
+defaults:
+  hardware_hint: H100-80GB
+  prompt_length: 512
+  output_length: 256
+  concurrency: 16
+  duration_seconds: 30
+  warmup_requests: 4
+experiments:
+  - name: fp16_vllm
+    precision: fp16
+    backend: vllm
+    base_url: http://localhost:8000
+    model: meta-llama/Meta-Llama-3-8B-Instruct
+  - name: fp8_trtllm
+    precision: fp8
+    backend: triton_trtllm
+    base_url: http://localhost:8001
+    model: ensemble
+  - name: int8_lmdeploy
+    precision: int8
+    backend: lmdeploy
+    base_url: http://localhost:23333
+    model: meta-llama/Meta-Llama-3-8B-Instruct
+  - name: int4_awq_vllm
+    precision: int4
+    backend: vllm
+    base_url: http://localhost:8002
+    model: TheBloke/Meta-Llama-3-8B-Instruct-AWQ

@@ -1,0 +1,79 @@
+# Triton + TensorRT-LLM deployment for a GPU node pool. Template only.
+# The model repository must be provisioned (PVC below) with a built TRT-LLM
+# engine matching the config.pbtxt in models/triton_model_repo/.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: triton-model-repo
+spec:
+  accessModes: ["ReadOnlyMany"]
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triton
+  labels:
+    app: triton
+    suite: trt-triton-llm-bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: triton
+  template:
+    metadata:
+      labels:
+        app: triton
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: triton
+          image: nvcr.io/nvidia/tritonserver:24.10-trtllm-python-py3 # pin me
+          command: ["tritonserver"]
+          args:
+            - "--model-repository=/models"
+            - "--allow-http=true"
+            - "--allow-metrics=true"
+          ports:
+            - { name: http, containerPort: 8000 }
+            - { name: grpc, containerPort: 8001 }
+            - { name: metrics, containerPort: 8002 }
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: model-repo
+              mountPath: /models
+              readOnly: true
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: model-repo
+          persistentVolumeClaim:
+            claimName: triton-model-repo
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: triton
+  labels:
+    app: triton
+spec:
+  selector:
+    app: triton
+  ports:
+    - { name: http, port: 8000, targetPort: 8000 }
+    - { name: grpc, port: 8001, targetPort: 8001 }
+    - { name: metrics, port: 8002, targetPort: 8002 }

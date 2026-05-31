@@ -1,0 +1,120 @@
+# Multi-backend serving + monitoring stack for the benchmark suite.
+#
+# Bring up subsets via profiles, e.g.:
+#   docker compose -f infra/docker-compose.yml --profile vllm --profile monitoring up -d
+#   docker compose -f infra/docker-compose.yml --profile triton up -d
+#
+# Requirements: NVIDIA driver + nvidia-container-toolkit on the host.
+# IMPORTANT: image tags below are examples -- PIN them to versions you have
+# validated (the blueprint flags version churn as a top risk).
+name: trt-triton-llm-bench
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  # --- Triton + TensorRT-LLM ------------------------------------------------
+  triton:
+    image: nvcr.io/nvidia/tritonserver:24.10-trtllm-python-py3 # pin me
+    profiles: ["triton", "all"]
+    <<: *gpu
+    command: >-
+      tritonserver
+      --model-repository=/models
+      --allow-http=true
+      --allow-metrics=true
+    volumes:
+      - ../models/triton_model_repo:/models:ro
+      - hf-cache:/root/.cache/huggingface
+    ports:
+      - "8000:8000" # HTTP / generate
+      - "8001:8001" # gRPC
+      - "8002:8002" # Prometheus metrics
+    shm_size: "8gb"
+
+  # --- vLLM (OpenAI-compatible) --------------------------------------------
+  vllm:
+    image: vllm/vllm-openai:latest # pin me
+    profiles: ["vllm", "all"]
+    <<: *gpu
+    command: >-
+      --model ${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+      --port 8000
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    shm_size: "8gb"
+
+  # --- Text Generation Inference (TGI) -------------------------------------
+  tgi:
+    image: ghcr.io/huggingface/text-generation-inference:latest # pin me
+    profiles: ["tgi", "all"]
+    <<: *gpu
+    command: >-
+      --model-id ${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf-cache:/data
+    ports:
+      - "8080:80" # OpenAI-compatible + /generate
+    shm_size: "8gb"
+
+  # --- LMDeploy / TurboMind ------------------------------------------------
+  lmdeploy:
+    image: openmmlab/lmdeploy:latest # pin me
+    profiles: ["lmdeploy", "all"]
+    <<: *gpu
+    command: >-
+      lmdeploy serve api_server ${MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}
+      --server-port 23333
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    ports:
+      - "23333:23333"
+    shm_size: "8gb"
+
+  # --- Monitoring ----------------------------------------------------------
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.5-3.4.0-ubuntu22.04 # pin me
+    profiles: ["monitoring", "all"]
+    <<: *gpu
+    cap_add: ["SYS_ADMIN"]
+    ports:
+      - "9400:9400"
+
+  prometheus:
+    image: prom/prometheus:latest # pin me
+    profiles: ["monitoring", "all"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest # pin me
+    profiles: ["monitoring", "all"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  hf-cache:

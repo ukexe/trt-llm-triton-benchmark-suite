@@ -1,0 +1,18 @@
+# Smoke test: minimal vLLM baseline (Phase 2). Uses the FLAT schema.
+#
+# No-GPU smoke (mock backend):
+#   python -m benchmarks.runner.client --config benchmarks/configs/smoke_vllm.yaml --backend mock
+# Real vLLM (after `docker compose --profile vllm up -d`):
+#   python -m benchmarks.runner.client --config benchmarks/configs/smoke_vllm.yaml
+name: smoke_vllm
+backend: vllm
+model: meta-llama/Meta-Llama-3-8B-Instruct
+base_url: http://localhost:8000
+hardware_hint: A100-80GB
+precision: fp16
+prompt_length: 128
+output_length: 64
+concurrency: 4
+num_requests: 16
+warmup_requests: 2
+notes: "Tiny vLLM baseline for wiring validation, not for publishable numbers."

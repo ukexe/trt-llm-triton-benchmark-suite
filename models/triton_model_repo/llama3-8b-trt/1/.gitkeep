@@ -1,0 +1,3 @@
+# Engine artifacts (rank*.engine, config.json) go here after `trtllm-build`.
+# These are large and GPU/arch-specific -- they are .gitignored, not committed.
+# Build them with: python models/convert/convert_to_trtllm.py --model <hf> --run

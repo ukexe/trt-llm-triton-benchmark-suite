@@ -1,0 +1,77 @@
+# Triton config for the TensorRT-LLM engine ("tensorrt_llm" model).
+#
+# TEMPLATE: values must match the engine you built with trtllm-build
+# (see models/convert/convert_to_trtllm.py). This is the core engine model with
+# *tokenized* I/O. To accept raw text and stream text out via
+# /v2/models/<m>/generate_stream, deploy the standard tensorrtllm_backend
+# ensemble (preprocessing -> tensorrt_llm -> postprocessing) and point the
+# benchmark's `backend.model` at the ensemble name.
+name: "llama3-8b-trt"
+backend: "tensorrtllm"
+max_batch_size: 64
+
+# Decoupled = streaming: the backend may return many responses per request.
+model_transaction_policy {
+  decoupled: true
+}
+
+# --- Two-level batching (blueprint: tune WITH in-flight batching) -----------
+# Triton's request-level dynamic batching sits in front of TensorRT-LLM's
+# iteration-level in-flight batching. Keep max_queue_delay small so TTFT is not
+# inflated; align preferred sizes with in-flight batching sweet spots.
+dynamic_batching {
+  preferred_batch_size: [ 16, 32, 64 ]
+  max_queue_delay_microseconds: 1000
+}
+
+# instance_group rationale (KIND_CPU vs KIND_GPU):
+# The tensorrtllm backend uses a CPU-side instance to DRIVE the GPU engine and
+# its own in-flight (continuous) batching + paged KV cache. So one KIND_CPU
+# instance is the norm here -- the GPU work happens inside the engine, not via
+# Triton GPU instances. Scale concurrency via the engine's max_batch_size and
+# kv_cache_free_gpu_mem_fraction below, NOT by adding instances.
+# (For non-TRT-LLM backends -- e.g. a plain TensorRT/ONNX model -- you would
+#  instead use kind: KIND_GPU with count > 1 to run parallel GPU instances.)
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+input [
+  { name: "input_ids",         data_type: TYPE_INT32, dims: [ -1 ] },
+  { name: "input_lengths",     data_type: TYPE_INT32, dims: [ 1 ], reshape: { shape: [ ] } },
+  { name: "request_output_len", data_type: TYPE_INT32, dims: [ 1 ] },
+  { name: "streaming",         data_type: TYPE_BOOL,  dims: [ 1 ], optional: true },
+  { name: "temperature",       data_type: TYPE_FP32,  dims: [ 1 ], optional: true },
+  { name: "runtime_top_p",     data_type: TYPE_FP32,  dims: [ 1 ], optional: true }
+]
+output [
+  { name: "output_ids", data_type: TYPE_INT32, dims: [ -1, -1 ] }
+]
+
+parameters: {
+  key: "gpt_model_type"
+  value: { string_value: "inflight_fused_batching" }
+}
+parameters: {
+  key: "gpt_model_path"
+  value: { string_value: "/models/llama3-8b-trt/1" }
+}
+parameters: {
+  key: "batch_scheduler_policy"
+  value: { string_value: "max_utilization" }
+}
+parameters: {
+  key: "kv_cache_free_gpu_mem_fraction"
+  value: { string_value: "0.9" }
+}
+parameters: {
+  key: "enable_kv_cache_reuse"
+  value: { string_value: "true" }
+}
+parameters: {
+  key: "exclude_input_in_output"
+  value: { string_value: "true" }
+}

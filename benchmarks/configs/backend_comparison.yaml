@@ -1,0 +1,22 @@
+# Standardized cross-backend comparison (Phase 8): SAME model / precision /
+# workload across backends, per the blueprint's Competitive Analysis and
+# Tradeoff Analysis. The `backends:` list fans out into one experiment per
+# backend; `backend_urls` sets each backend's endpoint.
+#
+# Run via the comparison helper (no GPU: add --backend mock):
+#   python -m benchmarks.runner.run_comparison --config benchmarks/configs/backend_comparison.yaml
+name: backend_comparison
+precision: fp16
+hardware_hint: A100-80GB
+model: meta-llama/Meta-Llama-3-8B-Instruct
+prompt_length: 512
+output_length: 256
+concurrency: 16
+duration_seconds: 30
+warmup_requests: 4
+backends: [vllm, triton_trtllm, lmdeploy, tgi]
+backend_urls:
+  vllm: http://localhost:8000
+  triton_trtllm: http://localhost:8001
+  lmdeploy: http://localhost:23333
+  tgi: http://localhost:8080

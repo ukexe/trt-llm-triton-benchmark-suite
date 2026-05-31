@@ -1,0 +1,21 @@
+# Smoke test: minimal Triton + TensorRT-LLM FP16 baseline (Phase 3). FLAT schema.
+#
+# 1. Build an FP16 engine into models/triton_model_repo/llama3-8b-trt/1/:
+#      python models/convert/convert_to_trtllm.py --model meta-llama/Meta-Llama-3-8B-Instruct \
+#          --dtype float16 --run
+# 2. docker compose --profile triton up -d
+# 3. python -m benchmarks.runner.client --config benchmarks/configs/smoke_triton_trtllm.yaml
+#
+# No-GPU smoke of the harness itself: add --backend mock
+name: smoke_triton_trtllm
+backend: triton_trtllm          # alias -> triton (triton-generate API)
+model: ensemble                 # text-in/text-out ensemble model in the Triton repo
+base_url: http://localhost:8000
+hardware_hint: A100-80GB
+precision: fp16
+prompt_length: 128
+output_length: 64
+concurrency: 4
+num_requests: 16
+warmup_requests: 2
+notes: "Tiny Triton+TRT-LLM FP16 baseline for wiring validation."

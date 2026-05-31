@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Benchmark outputs
+results/
+data/
+*.log
+
+# Model artifacts (never commit weights / engines)
+*.bin
+*.safetensors
+*.gguf
+*.onnx
+*.engine
+*.plan
+models/triton_model_repo/**/1/*.engine
+models/triton_model_repo/**/1/*.plan
+hf_cache/
+model_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
