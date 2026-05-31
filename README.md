@@ -1,10 +1,16 @@
 # Production-Grade Triton + TensorRT-LLM Benchmark & Inference Optimization Suite
 
-**Apples-to-apples LLM serving benchmarks across NVIDIA's fastest stack and the open-source alternatives — with cost per million tokens, not just tokens/sec.**
+**Cross-runtime LLM serving benchmarks with cost per million tokens — not just tokens/sec.**
 
-> *"Which backend should we run in production — TensorRT-LLM, vLLM, LMDeploy, or TGI? At what concurrency? What does FP8 actually buy us on H100? What does it cost per million tokens on RunPod vs AWS?"*
->
-> This repo answers those questions with **reproducible, config-driven experiments** — the kind of infra R&D platform teams build internally, open-sourced as a portfolio artifact.
+Most teams pick a serving stack by default. This suite runs the **same workload** through TensorRT-LLM + Triton, vLLM, LMDeploy/TurboMind, and TGI on identical hardware, then ties throughput and latency to **$/million tokens** across GPU providers.
+
+The questions it is built to answer:
+
+- At a given concurrency, which runtime gives the best p95 latency for the cost?
+- Where does FP8 on H100 actually pay off vs FP16 on A100?
+- How do Triton's dynamic batcher and TRT-LLM's in-flight batcher interact — and what should `max_queue_delay_microseconds` be?
+
+Everything is **config-driven, reproducible, and instrumented** — warm-up phases, closed-loop load, percentile latencies, Prometheus export, cross-backend comparison tables.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-11%20passing-brightgreen.svg)](./tests/)
@@ -12,30 +18,21 @@
 
 ---
 
-## Why recruiters & hiring managers should care
+## Scope
 
-Most LLM repos show *one* serving stack. This one shows you understand **the full inference landscape** — compiled NVIDIA engines vs flexible runtimes, latency vs throughput trade-offs, quantization, observability, and **FinOps for ML** (GPU/hr → cost/token).
-
-| What this demonstrates | Where to see it |
-|------------------------|-----------------|
-| **Multi-backend serving** — Triton + TensorRT-LLM, vLLM, LMDeploy/TurboMind, TGI behind one uniform harness | [`benchmarks/runner/backends.py`](./benchmarks/runner/backends.py) |
-| **Production benchmarking** — TTFT, ITL, p50/p95/p99, TPS/RPS, closed-loop concurrency (GenAI-Perf / LLMPerf aligned) | [`benchmarks/runner/result_aggregator.py`](./benchmarks/runner/result_aggregator.py) |
-| **Scheduler tuning** — Triton dynamic batching × TRT-LLM in-flight batching (two-level batching) | [`models/triton_model_repo/llama3-8b-trt/config.pbtxt`](./models/triton_model_repo/llama3-8b-trt/config.pbtxt) |
-| **Quantization paths** — FP16 / FP8 / INT8 SmoothQuant / INT4 AWQ with per-backend artifact mapping | [`docs/quantization.md`](./docs/quantization.md) |
-| **Observability** — DCGM + Prometheus + Grafana + per-run `metrics.prom` export | [`infra/docker-compose.yml`](./infra/docker-compose.yml) |
-| **Cost modeling** — GPU marketplace pricing → **$/million tokens** and **$/request** | [`cost/cost_analysis.py`](./cost/cost_analysis.py) |
-| **Systems design** — docker-compose + K8s manifests, config-driven experiment matrix, cross-backend comparison reports | [`blueprint.md`](./blueprint.md) |
-
-**Resume bullets this project backs up:**
-
-- Designed and implemented a **multi-backend LLM inference benchmarking suite** comparing TensorRT-LLM/Triton, vLLM, LMDeploy, and TGI, measuring TTFT, p50–p99 latency, tokens/sec, and cost per million tokens.
-- Built **GPU-optimized TensorRT-LLM deployment scaffolding** with Triton dynamic batching, in-flight batching, and paged KV cache configuration.
-- Developed a **configuration-driven experiment harness** with YAML sweeps, Prometheus metrics export, and automated cross-backend comparison tables.
-- Quantified **cloud cost trade-offs** across GPU marketplace providers by combining GPU/hr pricing with runtime throughput metrics.
+| Area | Implementation |
+|------|----------------|
+| **Multi-backend harness** — one controller, uniform streaming API | [`benchmarks/runner/backends.py`](./benchmarks/runner/backends.py) |
+| **Benchmark methodology** — TTFT, ITL, p50/p95/p99, TPS/RPS, closed-loop concurrency | [`benchmarks/runner/result_aggregator.py`](./benchmarks/runner/result_aggregator.py) |
+| **Two-level batching** — Triton dynamic batching × TRT-LLM in-flight batching | [`models/triton_model_repo/llama3-8b-trt/config.pbtxt`](./models/triton_model_repo/llama3-8b-trt/config.pbtxt) |
+| **Quantization matrix** — FP16 / FP8 / INT8 / INT4, mapped to the backend that serves each | [`docs/quantization.md`](./docs/quantization.md) |
+| **Observability** — DCGM, Prometheus, Grafana, per-run `metrics.prom` | [`infra/docker-compose.yml`](./infra/docker-compose.yml) |
+| **Cost model** — GPU/hr → $/million tokens, $/request, multi-provider | [`cost/cost_analysis.py`](./cost/cost_analysis.py) |
+| **Architecture spec** — 830-line design doc covering MVA → enterprise tiers | [`blueprint.md`](./blueprint.md) |
 
 ---
 
-## Architecture at a glance
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -52,25 +49,23 @@ flowchart LR
   sum --> nb[Analysis notebooks]
 ```
 
-Full diagrams (single-node, K8s, request flow): [`docs/architecture.md`](./docs/architecture.md)
+Single-node, K8s, and request-flow diagrams: [`docs/architecture.md`](./docs/architecture.md)
 
 ---
 
-## Try it in 60 seconds — no GPU required
+## Quickstart
 
-The harness includes a **`mock` backend** that simulates TTFT and inter-token latency, so reviewers can run the full pipeline on any laptop:
+No GPU required — the `mock` backend simulates TTFT and inter-token latency so the full pipeline runs locally:
 
 ```bash
 pip install -r requirements.txt
 
-# Run a benchmark → writes summary.json + Prometheus metrics
 python -m benchmarks.runner.client \
     --config benchmarks/configs/single_gpu_baseline.yaml --backend mock --out results/
 
-# Cost across GPU providers (RunPod, Lambda, Vast, AWS…)
-python -m cost.cost_analysis --results results/single_gpu_baseline/summary.json --gpu-type A100_80GB
+python -m cost.cost_analysis \
+    --results results/single_gpu_baseline/summary.json --gpu-type A100_80GB
 
-# Head-to-head backend comparison table (Markdown + CSV)
 python -m benchmarks.runner.run_comparison \
     --config benchmarks/configs/backend_comparison.yaml --backend mock --num-requests 8
 ```
@@ -83,85 +78,76 @@ On a GPU host: `docker compose -f infra/docker-compose.yml --profile vllm up -d`
 
 | Layer | Technologies |
 |-------|--------------|
-| **Serving runtimes** | NVIDIA TensorRT-LLM, Triton Inference Server, vLLM, LMDeploy/TurboMind, Hugging Face TGI |
-| **GPU targets** | A100 80GB, H100 80GB, L40S 48GB (configurable) |
+| **Serving runtimes** | TensorRT-LLM, Triton Inference Server, vLLM, LMDeploy/TurboMind, Hugging Face TGI |
+| **GPU targets** | A100 80GB, H100 80GB, L40S 48GB |
 | **Quantization** | FP16, FP8 (Hopper TE), INT8 SmoothQuant, INT4 AWQ/GPTQ |
-| **Observability** | DCGM exporter, Prometheus, Grafana, `nvidia-smi` sampling |
+| **Observability** | DCGM exporter, Prometheus, Grafana, `nvidia-smi` |
 | **Orchestration** | Docker Compose profiles, Kubernetes deployment templates |
-| **Harness** | Python 3.10+, async HTTP (httpx), YAML config sweeps, pytest + ruff |
+| **Harness** | Python 3.10+, async httpx, YAML sweeps, pytest + ruff |
 
 ---
 
-## Key experiments (config-driven)
+## Experiment matrix
 
-| Config | What it answers |
+| Config | Axis under test |
 |--------|-----------------|
-| [`single_gpu_baseline.yaml`](./benchmarks/configs/single_gpu_baseline.yaml) | Reference latency/throughput at fixed concurrency |
-| [`concurrency_sweep.yaml`](./benchmarks/configs/concurrency_sweep.yaml) | How TTFT & p95 scale as in-flight requests grow |
-| [`multi_precision_sweep.yaml`](./benchmarks/configs/multi_precision_sweep.yaml) | FP16 vs FP8 vs INT8 vs 4-bit speed/cost trade-offs |
-| [`backend_comparison.yaml`](./benchmarks/configs/backend_comparison.yaml) | Which runtime wins for this model + workload |
+| [`single_gpu_baseline.yaml`](./benchmarks/configs/single_gpu_baseline.yaml) | Reference point — fixed concurrency, FP16 |
+| [`concurrency_sweep.yaml`](./benchmarks/configs/concurrency_sweep.yaml) | TTFT / p95 / TPS vs in-flight requests |
+| [`multi_precision_sweep.yaml`](./benchmarks/configs/multi_precision_sweep.yaml) | FP16 → FP8 → INT8 → 4-bit |
+| [`backend_comparison.yaml`](./benchmarks/configs/backend_comparison.yaml) | Runtime head-to-head, same workload |
 
-Details: [`docs/experiments.md`](./docs/experiments.md)
+Methodology and config schema: [`docs/experiments.md`](./docs/experiments.md)
 
 ---
 
-## Repository layout
+## Layout
 
 ```text
-├── blueprint.md              # Full architecture spec (830-line design doc)
-├── benchmarks/runner/        # Controller, backends, metrics, aggregation, comparison
-├── benchmarks/configs/       # YAML experiment matrix
-├── cost/                     # GPU pricing table + cost-per-token engine
-├── models/convert/           # TRT-LLM / ONNX / quantization CLI wrappers
-├── models/triton_model_repo/ # Triton config.pbtxt (dynamic + in-flight batching)
+├── blueprint.md              # Architecture spec
+├── benchmarks/runner/        # Controller, backends, metrics, aggregation
+├── benchmarks/configs/       # Experiment YAML
+├── cost/                     # GPU pricing + cost-per-token engine
+├── models/convert/           # TRT-LLM / ONNX / quantization wrappers
+├── models/triton_model_repo/ # Triton config.pbtxt
 ├── infra/                    # docker-compose + k8s + Prometheus/Grafana
 ├── docs/                     # Architecture, experiments, cost model, comparisons
-├── notebooks/analysis/       # Latency-vs-TPS, cost-per-token plots
-└── tests/                    # Unit tests (11 passing)
+├── notebooks/analysis/       # Latency-vs-TPS, cost-per-token
+└── tests/
 ```
 
 ---
 
-## Documentation
+## Docs
 
-| Doc | For reviewers who want to understand… |
-|-----|--------------------------------------|
-| [`docs/portfolio.md`](./docs/portfolio.md) | **Start here** — 60-second tour + which 5 files to open |
-| [`docs/architecture.md`](./docs/architecture.md) | Components, data flows, monitoring strategy |
-| [`docs/experiments.md`](./docs/experiments.md) | Config schema, smoke tests, how to interpret results |
-| [`docs/comparisons.md`](./docs/comparisons.md) | Backend matrix + running cross-runtime comparisons |
-| [`docs/cost-model.md`](./docs/cost-model.md) | Cost formulas, pricing assumptions, CLI usage |
-| [`docs/quantization.md`](./docs/quantization.md) | Which backend serves which precision |
-| [`blueprint.md`](./blueprint.md) | The full product & architecture blueprint |
+| | |
+|---|---|
+| [`docs/architecture.md`](./docs/architecture.md) | Components, data flows, monitoring |
+| [`docs/experiments.md`](./docs/experiments.md) | Config schema, smoke tests, interpretation |
+| [`docs/comparisons.md`](./docs/comparisons.md) | Backend matrix, comparison helper |
+| [`docs/cost-model.md`](./docs/cost-model.md) | Formulas, pricing, CLI |
+| [`docs/quantization.md`](./docs/quantization.md) | Precision paths per backend |
+| [`blueprint.md`](./blueprint.md) | Full product & architecture blueprint |
 
 ---
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"    # ruff + pytest
-make test                  # 11 tests
-make lint                  # ruff check
+pip install -e ".[dev]"
+make test    # 11 passing
+make lint
 ```
 
 ---
 
 ## Status
 
-| Component | Status |
-|-----------|--------|
-| Config-driven benchmark harness + mock backend | ✅ Runnable today |
-| vLLM / TGI / Triton / LMDeploy clients | ✅ Implemented (needs live server) |
-| Metrics aggregation + Prometheus textfile export | ✅ Implemented |
-| Cross-backend comparison helper | ✅ Implemented |
-| Cost model (multi-provider GPU pricing) | ✅ Implemented |
-| docker-compose + k8s + Grafana templates | 📋 Ready to deploy (pin image versions) |
-| TRT-LLM engine build + quantization | 📋 CLI wrappers (`--run` on GPU host) |
-
----
-
-## Author
-
-Built as a **principal-level AI infrastructure portfolio project** — demonstrating the depth expected for LLM serving, GPU optimization, and ML platform engineering roles.
-
-Questions or feedback? Open an issue or reach out via GitHub.
+| Component | |
+|-----------|---|
+| Config-driven harness + mock backend | ✅ |
+| vLLM / TGI / Triton / LMDeploy clients | ✅ (live server required) |
+| Metrics aggregation + Prometheus export | ✅ |
+| Cross-backend comparison | ✅ |
+| Cost model | ✅ |
+| docker-compose + k8s + Grafana | 📋 templates — pin images before deploy |
+| TRT-LLM build + quantization | 📋 CLI wrappers — `--run` on GPU host |
